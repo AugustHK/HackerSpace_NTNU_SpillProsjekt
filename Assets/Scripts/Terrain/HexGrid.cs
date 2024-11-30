@@ -40,6 +40,9 @@ public class HexGrid : MonoBehaviour
     [Header("Terrain Data")]
     private Transform[] chunks = default;
 
+    [SerializeField]
+    private Vector2[] chunkBuildable = default;
+
     [HideInInspector]
     public HexCell[] cells;
 
@@ -71,6 +74,9 @@ public class HexGrid : MonoBehaviour
     [Header("Cell Variables")]
     [SerializeField]
     private HexCellType[] cellTypes = default;
+
+    [SerializeField]
+    private HexCellType[] buildableCellTypes = default;
 
     private HexCellType tallestCellType = default;
 
@@ -242,7 +248,23 @@ public class HexGrid : MonoBehaviour
 
         cell.transform.SetParent(chunks[chunkX + chunkZ * chunkCountX]);
 
-        SetTypeForCell(cell);
+        //No buildable chunk set, assumes every chunk should be buildable
+        if (chunkBuildable.Length == 0) {
+            SetTypeForCell(cell);
+            return;
+        }
+
+        foreach (Vector2 chunk in chunkBuildable)
+        {
+            if (chunk.x == chunkX && chunk.y == chunkZ)
+            {
+                SetTypeForCell(cell, true);
+                return;
+            }
+        }
+
+        SetTypeForCell(cell, false);
+        
     }
 
     /// <summary>
@@ -254,6 +276,26 @@ public class HexGrid : MonoBehaviour
         float noiseValue = SampleNoise(cell.transform.localPosition, noise).y; // will be between 0.0 and 1.0 (both inclusive)
         int cellTypeIndex = Mathf.FloorToInt(noiseValue * cellTypes.Length * 0.99f); // will be between 0 and the last index of `cellTypes`
         cell.CellType = cellTypes[cellTypeIndex];
+    }
+
+    /// <summary>
+    /// Adjust a cells transform and material information based off the elevation integer and if the chunk is allowed to be built on.
+    /// </summary>
+    /// <param name="cell">The target cell</param>
+    private void SetTypeForCell(HexCell cell, bool isBuildable)
+    {
+        float noiseValue = HexMetrics.SampleNoise(cell.transform.localPosition, noise).y; // will be between 0.0 and 1.0 (both inclusive)
+
+        if (!isBuildable)
+        {
+            int cellTypeIndex = Mathf.FloorToInt(noiseValue * cellTypes.Length * 0.99f); // will be between 0 and the last index of `cellTypes`
+            cell.CellType = cellTypes[cellTypeIndex];
+            return;
+        }
+
+        int buildableCellTypeIndex = Mathf.FloorToInt(noiseValue * buildableCellTypes.Length * 0.99f); // will be between 0 and the last index of `BuildableCellTypes`
+        cell.CellType = cellTypes[buildableCellTypeIndex];
+
     }
 
     /// <returns>
@@ -332,6 +374,26 @@ public class HexGrid : MonoBehaviour
                 || elevation >= tallestCellType.elevation
                 || cell.IsOccupied)
                 continue;
+
+            if (chunkBuildable.Length > 0)
+            {
+                int chunkX = cell.coordinates.X / HexMetrics.CHUNK_SIZE_X;
+                int chunkZ = cell.coordinates.Z / HexMetrics.CHUNK_SIZE_Z;
+                foreach (Vector2 chunk in chunkBuildable)
+                {
+                    if (chunk.x == chunkX && chunk.y == chunkZ)
+                    {
+                        if (occupying){ continue; }
+
+                        int sceneryIndexBuildable = Random.Range(0, sceneryObjects.Length);
+                        GameObject sceneryObjectBuildable = cell.InstantiatePrefabOnCell(sceneryObjects[sceneryIndexBuildable]);
+                        float yRotationBuildable = Random.Range(0f, 360f);
+                        sceneryObjectBuildable.transform.Rotate(0, yRotationBuildable, 0);
+                        cell.OccupyingObject = null;
+                        continue;
+                    }
+                }
+            }
 
             int sceneryIndex = Random.Range(0, sceneryObjects.Length);
             GameObject sceneryObject = cell.InstantiatePrefabOnCell(sceneryObjects[sceneryIndex]);
